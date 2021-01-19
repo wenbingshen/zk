@@ -216,7 +216,7 @@ var (
 		opClose:           "close",
 		opSetAuth:         "setAuth",
 		opSetWatches:      "setWatches",
-		opSetSasl          "setSasl"
+		opSetSasl:         "setSasl",
 
 		opWatcherEvent: "watcherEvent",
 	}
