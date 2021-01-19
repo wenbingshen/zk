@@ -1,3 +1,3 @@
-replace github.com/go-zookeeper/zk => github.com/wenbingshen/zk
+module github.com/wenbingshen/zk
 
 go 1.13
