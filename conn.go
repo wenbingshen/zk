@@ -1477,7 +1477,7 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 		// that are waiting for this to return
 		if cred.scheme == "digest" {
 			shouldContinue, err = resendZkDigest(ctx, c, cred.auth)
-		if cred.scheme == "kerberos" {
+		} else if cred.scheme == "kerberos" {
             shouldContinue, err = resendZkKerberos(ctx, c)
 		} else {
 			shouldContinue, err = c.sendRequestEx(
