@@ -250,10 +250,6 @@ type setSaslRequest struct {
 	Token string
 }
 
-type setSaslResponse struct {
-	Token string
-}
-
 type setWatchesRequest struct {
 	RelativeZxid int64
 	DataWatches  []string
@@ -633,6 +629,8 @@ func requestStructForOp(op int32) interface{} {
 		return &multiRequest{}
 	case opReconfig:
 		return &reconfigRequest{}
+	case opSetSasl:
+		return &setSaslResponse{}
 	}
 	return nil
 }

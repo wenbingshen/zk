@@ -394,6 +394,40 @@ func (c *Conn) connect() error {
 	}
 }
 
+// sendRequestEx sends request directly, and handles the closed or quit scenarios.
+func (c *Conn) sendRequestEx(
+	ctx context.Context,
+	opcode int32,
+	req interface{},
+	res interface{},
+	recvFunc func(*request, *responseHeader, error)) (bool, error) {
+
+	resChan, err := c.sendRequest(opcode, req, res, recvFunc)
+
+	if err != nil {
+		return true, fmt.Errorf("failed to send auth request: %v", err)
+	}
+
+	var resp response
+
+	select {
+	case resp = <-resChan:
+	case <-c.closeChan:
+		c.logger.Printf("recv routine closed")
+		return false, nil
+	case <-c.shouldQuit:
+		c.logger.Printf("should quit")
+		return false, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
+
+	if resp.err != nil {
+		return true, fmt.Errorf("failed for op: %d, error: %v", opcode, resp.err)
+	}
+	return true, nil
+}
+
 func (c *Conn) sendRequest(
 	opcode int32,
 	req interface{},
@@ -932,8 +966,36 @@ func (c *Conn) request(opcode int32, req interface{}, res interface{}, recvFunc 
 	}
 }
 
+func (c *Conn) doAddSaslAuth(auth []byte) (int64, error) {
+	// step 1 Ask for server informations.
+	resp := setSaslResponse{}
+
+	zxid, err := c.request(opSetSasl, &setSaslRequest{}, &resp, nil)
+	if err != nil {
+		return zxid, err
+	}
+
+	challenge, err := resp.GenSaslChallenge(auth, "")
+
+	if err != nil {
+		return 0, err
+	}
+
+	// step 2 Do the authentication.
+	return c.request(opSetSasl, &setSaslRequest{challenge}, &resp, nil)
+}
+
+// AddAuth adds an auth specified by <scheme> and <auth>, supported schemes
+// includes "digest", "sasl", <auth> usually comes as "user:pasword".
 func (c *Conn) AddAuth(scheme string, auth []byte) error {
-	_, err := c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
+	//_, err := c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
+
+	var err error
+	if scheme == "sasl" {
+		_, err = c.doAddSaslAuth(auth)
+	} else {
+		_, err = c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
+	}
 
 	if err != nil {
 		return err
@@ -1299,6 +1361,91 @@ func (c *Conn) Server() string {
 	return c.server
 }
 
+func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
+		// Write the preamble
+		const header = "HBas\x00\x51" // \x51 = Kerberos Auth
+		buf := make([]byte, 0, len(header)+4+len(data))
+		buf = append(buf, header...)
+		c.conn.write(buf)
+
+		mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
+		if err != nil {
+			log.Println(err)
+		}
+		saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
+
+		// Get initial response
+		saslToken, err := saslClient.Start()
+		if err != nil {
+			log.Println(err)
+		}
+
+		sbuf := make([]byte, 4)
+		binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
+		sbuf = append(sbuf, saslToken...)
+		c.conn.write(sbuf)
+
+		if !saslClient.Complete() {
+			status := make([]byte, 4)
+			c.conn.Read(status)
+
+			tokenLen := make([]byte, 4)
+			c.conn.Read(tokenLen)
+
+			resLength := binary.BigEndian.Uint32(tokenLen)
+			saslToken = make([]byte, resLength)
+			c.conn.Read(saslToken)
+
+			for !saslClient.Complete() {
+				saslToken, err = saslClient.Step(saslToken)
+				if err != nil {
+					log.Println(err)
+				}
+				if saslToken != nil {
+					sbuf := make([]byte, 4)
+					binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
+					sbuf = append(sbuf, saslToken...)
+					c.conn.write(sbuf)
+				}
+				if !saslClient.Complete() {
+					status := make([]byte, 4)
+					c.conn.Read(status)
+
+					tokenLen := make([]byte, 4)
+					c.conn.Read(tokenLen)
+
+					resLength := binary.BigEndian.Uint32(tokenLen)
+					saslToken = make([]byte, resLength)
+					c.conn.Read(saslToken)
+				}
+			}
+		}
+
+		buf = make([]byte, 4)
+		binary.BigEndian.PutUint32(buf[:], uint32(len(data)))
+		buf = append(buf, data...)
+		resp, err := saslClient.Encode(buf)
+		return c.conn.write(resp)
+}
+
+// FIXME(linsite) unify it with doAddSasl.
+// resendZkDigest resends Digest SASL auth, when the 1st return value is true indicates the connection is invalid.
+func resendZkDigest(ctx context.Context, c *Conn, auth []byte) (bool, error) {
+	resp := setSaslResponse{}
+	shouldContinue, err := c.sendRequestEx(ctx, opSetSasl, &setSaslRequest{}, &resp, nil)
+	if err != nil {
+		return shouldContinue, err
+	}
+
+	challenge, err := resp.GenSaslChallenge(auth, "")
+
+	if err != nil {
+		return true, err
+	}
+
+	return c.sendRequestEx(ctx, opSetSasl, &setSaslRequest{challenge}, &resp, nil)
+}
+
 func resendZkAuth(ctx context.Context, c *Conn) error {
 	shouldCancel := func() bool {
 		select {
@@ -1318,6 +1465,9 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 		c.logger.Printf("re-submitting `%d` credentials after reconnect", len(c.creds))
 	}
 
+	var shouldContinue bool
+	var err error
+
 	for _, cred := range c.creds {
 		// return early before attempting to send request.
 		if shouldCancel() {
@@ -1325,33 +1475,27 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 		}
 		// do not use the public API for auth since it depends on the send/recv loops
 		// that are waiting for this to return
-		resChan, err := c.sendRequest(
-			opSetAuth,
-			&setAuthRequest{Type: 0,
-				Scheme: cred.scheme,
-				Auth:   cred.auth,
-			},
-			&setAuthResponse{},
-			nil, /* recvFunc*/
-		)
+		if cred.scheme == "digest" {
+			shouldContinue, err = resendZkDigest(ctx, c, cred.auth)
+		if cred.scheme == "kerberos" {
+            shouldContinue, err = resendZkKerberos(ctx, c)
+		} else {
+			shouldContinue, err = c.sendRequestEx(
+				ctx,
+				opSetAuth,
+				&setAuthRequest{Type: 0,
+					Scheme: cred.scheme,
+					Auth:   cred.auth,
+				},
+				&setAuthResponse{},
+				nil, /* recvFunc*/
+			)
+		}
 		if err != nil {
-			return fmt.Errorf("failed to send auth request: %v", err)
-		}
-
-		var res response
-		select {
-		case res = <-resChan:
-		case <-c.closeChan:
-			c.logger.Printf("recv closed, cancel re-submitting credentials")
-			return nil
-		case <-c.shouldQuit:
-			c.logger.Printf("should quit, cancel re-submitting credentials")
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-		if res.err != nil {
-			return fmt.Errorf("failed conneciton setAuth request: %v", res.err)
+			if shouldContinue {
+				continue
+			}
+			return err
 		}
 	}
 

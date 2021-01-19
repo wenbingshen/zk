@@ -93,6 +93,7 @@ type ServerConfig struct {
 	AutoPurgeSnapRetainCount int    // Number of snapshots to retain in dataDir
 	AutoPurgePurgeInterval   int    // Purge task internal in hours (0 to disable auto purge)
 	Servers                  []ServerConfigServer
+	AuthProvider             string
 }
 
 func (sc ServerConfig) Marshall(w io.Writer) error {
@@ -130,6 +131,10 @@ func (sc ServerConfig) Marshall(w io.Writer) error {
 	// TODO: allow setting this
 	fmt.Fprintln(w, "reconfigEnabled=true")
 	fmt.Fprintln(w, "4lw.commands.whitelist=*")
+
+	if sc.AuthProvider != "" {
+		fmt.Fprintf(w, "authProvider.1=%s\n", sc.AuthProvider)
+	}
 
 	if len(sc.Servers) < 2 {
 		// if we dont have more than 2 servers we just dont specify server list to start in standalone mode
