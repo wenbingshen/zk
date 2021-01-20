@@ -1385,7 +1385,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	if err != nil {
 		c.logger.Printf("has a err:%v", err)
 	}
-	c.logger.Printf("1.new saslClient start successfully, init saslTopken= %s", string(saslToken))
+	c.logger.Printf("1.new saslClient started")
 	//sbuf := make([]byte, 4)
 	//binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
 	//sbuf = append(sbuf, saslToken...)
