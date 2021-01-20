@@ -1362,11 +1362,6 @@ func (c *Conn) Server() string {
 }
 
 func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
-		// Write the preamble
-		const header = "HBas\x00\x51" // \x51 = Kerberos Auth
-		buf := make([]byte, 0, len(header)+4+len(data))
-		buf = append(buf, header...)
-		c.conn.write(buf)
 
 		mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 		if err != nil {
@@ -1376,6 +1371,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 
 		// Get initial response
 		saslToken, err := saslClient.Start()
+		log.Println(saslToken)
 		if err != nil {
 			log.Println(err)
 		}
@@ -1383,7 +1379,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		sbuf := make([]byte, 4)
 		binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
 		sbuf = append(sbuf, saslToken...)
-		c.conn.write(sbuf)
+		c.conn.Write(sbuf)
 
 		if !saslClient.Complete() {
 			status := make([]byte, 4)
@@ -1405,7 +1401,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 					sbuf := make([]byte, 4)
 					binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
 					sbuf = append(sbuf, saslToken...)
-					c.conn.write(sbuf)
+					c.conn.Write(sbuf)
 				}
 				if !saslClient.Complete() {
 					status := make([]byte, 4)
@@ -1422,10 +1418,11 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		}
 
 		buf = make([]byte, 4)
-		binary.BigEndian.PutUint32(buf[:], uint32(len(data)))
-		buf = append(buf, data...)
+		binary.BigEndian.PutUint32(buf[:], uint32(len(saslToken)))
+		buf = append(buf, saslToken...)
 		resp, err := saslClient.Encode(buf)
-		return c.conn.write(resp)
+		log.Println(resp)
+		return c.conn.Write(resp)
 }
 
 // FIXME(linsite) unify it with doAddSasl.
