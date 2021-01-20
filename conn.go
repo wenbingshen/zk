@@ -308,6 +308,12 @@ func WithMaxConnBufferSize(maxBufferSize int) connOption {
 	}
 }
 
+func WithCreds(creds authCreds) connOption {
+	return func(c *Conn) {
+		c.creds = append(c.creds, creds)
+	}
+}
+
 // Close will submit a close request with ZK and signal the connection to stop
 // sending and receiving packets.
 func (c *Conn) Close() {
@@ -1365,60 +1371,60 @@ func (c *Conn) Server() string {
 
 func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 
-		mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
-		if err != nil {
-			c.logger.Printf("had an err=%v", err)
-		}
-		saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
+	mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
+	if err != nil {
+		c.logger.Printf("had an err=%v", err)
+	}
+	saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
 
-		// Get initial response
-		saslToken, err := saslClient.Start()
-		if err != nil {
-			c.logger.Printf("has a err:%v", err)
-		}
+	// Get initial response
+	saslToken, err := saslClient.Start()
+	if err != nil {
+		c.logger.Printf("has a err:%v", err)
+	}
 
-		sbuf := make([]byte, 4)
-		binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
-		sbuf = append(sbuf, saslToken...)
-		c.conn.Write(sbuf)
+	sbuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
+	sbuf = append(sbuf, saslToken...)
+	c.conn.Write(sbuf)
 
-		if !saslClient.Complete() {
-			status := make([]byte, 4)
-			c.conn.Read(status)
+	if !saslClient.Complete() {
+		status := make([]byte, 4)
+		c.conn.Read(status)
 
-			tokenLen := make([]byte, 4)
-			c.conn.Read(tokenLen)
+		tokenLen := make([]byte, 4)
+		c.conn.Read(tokenLen)
 
-			resLength := binary.BigEndian.Uint32(tokenLen)
-			saslToken = make([]byte, resLength)
-			c.conn.Read(saslToken)
+		resLength := binary.BigEndian.Uint32(tokenLen)
+		saslToken = make([]byte, resLength)
+		c.conn.Read(saslToken)
 
-			for !saslClient.Complete() {
-				saslToken, err = saslClient.Step(saslToken)
-				if err != nil {
-					c.logger.Printf("faild an err= %v", err)
-				}
-				if saslToken != nil {
-					sbuf := make([]byte, 4)
-					binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
-					sbuf = append(sbuf, saslToken...)
-					c.conn.Write(sbuf)
-				}
-				if !saslClient.Complete() {
-					status := make([]byte, 4)
-					c.conn.Read(status)
+		for !saslClient.Complete() {
+			saslToken, err = saslClient.Step(saslToken)
+			if err != nil {
+				c.logger.Printf("faild an err= %v", err)
+			}
+			if saslToken != nil {
+				sbuf := make([]byte, 4)
+				binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
+				sbuf = append(sbuf, saslToken...)
+				c.conn.Write(sbuf)
+			}
+			if !saslClient.Complete() {
+				status := make([]byte, 4)
+				c.conn.Read(status)
 
-					tokenLen := make([]byte, 4)
-					c.conn.Read(tokenLen)
+				tokenLen := make([]byte, 4)
+				c.conn.Read(tokenLen)
 
-					resLength := binary.BigEndian.Uint32(tokenLen)
-					saslToken = make([]byte, resLength)
-					c.conn.Read(saslToken)
-				}
+				resLength := binary.BigEndian.Uint32(tokenLen)
+				saslToken = make([]byte, resLength)
+				c.conn.Read(saslToken)
 			}
 		}
+	}
 
-		return false, nil
+	return false, nil
 }
 
 // FIXME(linsite) unify it with doAddSasl.
@@ -1471,7 +1477,7 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 		if cred.scheme == "digest" {
 			shouldContinue, err = resendZkDigest(ctx, c, cred.auth)
 		} else if cred.scheme == "kerberos" {
-            shouldContinue, err = resendZkKerberos(ctx, c)
+			shouldContinue, err = resendZkKerberos(ctx, c)
 		} else {
 			shouldContinue, err = c.sendRequestEx(
 				ctx,
