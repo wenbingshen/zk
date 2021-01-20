@@ -1372,6 +1372,7 @@ func (c *Conn) Server() string {
 }
 
 func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
+	c.logger.Printf("begin kerberos...")
 	mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 	if err != nil {
 		c.logger.Printf("had an err=%v", err)
@@ -1383,13 +1384,14 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	if err != nil {
 		c.logger.Printf("has a err:%v", err)
 	}
-
+	c.logger.Printf("new saslClient successfully")
 	sbuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
 	sbuf = append(sbuf, saslToken...)
 	c.conn.Write(sbuf)
 
 	if !saslClient.Complete() {
+		c.logger.Printf("first complete false")
 		status := make([]byte, 4)
 		c.conn.Read(status)
 
@@ -1401,14 +1403,17 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.conn.Read(saslToken)
 
 		for !saslClient.Complete() {
+			c.logger.Printf("begin saslClient step")
 			saslToken, err = saslClient.Step(saslToken)
 			if err != nil {
 				c.logger.Printf("faild an err= %v", err)
 			}
 			if saslToken != nil {
+				c.logger.Printf("begin sendKerberosRequest")
 				sendKerberosRequest(string(saslToken), c)
 			}
 			if !saslClient.Complete() {
+				c.logger.Printf("third complete false")
 				status := make([]byte, 4)
 				c.conn.Read(status)
 
