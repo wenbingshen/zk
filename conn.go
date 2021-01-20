@@ -1367,15 +1367,14 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 
 		mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 		if err != nil {
-			c.logger.Printf(err)
+			c.logger.Printf("had an err=%v", err)
 		}
 		saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
 
 		// Get initial response
 		saslToken, err := saslClient.Start()
-		c.logger.Printf(saslToken)
 		if err != nil {
-			c.logger.Printf(err)
+			c.logger.Printf("has a err:%v", err)
 		}
 
 		sbuf := make([]byte, 4)
@@ -1397,7 +1396,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 			for !saslClient.Complete() {
 				saslToken, err = saslClient.Step(saslToken)
 				if err != nil {
-					c.logger.Printf(err)
+					c.logger.Printf("faild an err= %v", err)
 				}
 				if saslToken != nil {
 					sbuf := make([]byte, 4)
