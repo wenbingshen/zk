@@ -112,7 +112,8 @@ type Conn struct {
 	logger  Logger
 	logInfo bool // true if information messages are logged; false if only errors are logged
 
-	buf []byte
+	buf  []byte
+	auth string
 }
 
 // connOption represents a connection option.
@@ -176,7 +177,7 @@ func ConnectWithDialer(servers []string, sessionTimeout time.Duration, dialer Di
 // the session timeout it's possible to reestablish a connection to a different
 // server and keep the same session. This is means any ephemeral nodes and
 // watches are maintained.
-func Connect(servers []string, sessionTimeout time.Duration, options ...connOption) (*Conn, <-chan Event, error) {
+func Connect(servers []string, sessionTimeout time.Duration, auth string, options ...connOption) (*Conn, <-chan Event, error) {
 	if len(servers) == 0 {
 		return nil, nil, errors.New("zk: server list must not be empty")
 	}
@@ -203,6 +204,7 @@ func Connect(servers []string, sessionTimeout time.Duration, options ...connOpti
 		logInfo:        true, // default is true for backwards compatability
 		buf:            make([]byte, bufferSize),
 		resendZkAuthFn: resendZkAuth,
+		auth:           auth,
 	}
 
 	// Set provided options.
@@ -1467,34 +1469,38 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 	var shouldContinue bool
 	var err error
 
-	for _, cred := range c.creds {
-		// return early before attempting to send request.
-		if shouldCancel() {
-			return nil
-		}
-		// do not use the public API for auth since it depends on the send/recv loops
-		// that are waiting for this to return
-		if cred.scheme == "digest" {
-			shouldContinue, err = resendZkDigest(ctx, c, cred.auth)
-		} else if cred.scheme == "kerberos" {
-			shouldContinue, err = resendZkKerberos(ctx, c)
-		} else {
-			shouldContinue, err = c.sendRequestEx(
-				ctx,
-				opSetAuth,
-				&setAuthRequest{Type: 0,
-					Scheme: cred.scheme,
-					Auth:   cred.auth,
-				},
-				&setAuthResponse{},
-				nil, /* recvFunc*/
-			)
-		}
-		if err != nil {
-			if shouldContinue {
-				continue
+	if c.auth == "kerberos" {
+		shouldContinue, err = resendZkKerberos(ctx, c)
+	} else {
+		for _, cred := range c.creds {
+			// return early before attempting to send request.
+			if shouldCancel() {
+				return nil
 			}
-			return err
+			// do not use the public API for auth since it depends on the send/recv loops
+			// that are waiting for this to return
+			if cred.scheme == "digest" {
+				shouldContinue, err = resendZkDigest(ctx, c, cred.auth)
+			} else if cred.scheme == "kerberos" {
+				shouldContinue, err = resendZkKerberos(ctx, c)
+			} else {
+				shouldContinue, err = c.sendRequestEx(
+					ctx,
+					opSetAuth,
+					&setAuthRequest{Type: 0,
+						Scheme: cred.scheme,
+						Auth:   cred.auth,
+					},
+					&setAuthResponse{},
+					nil, /* recvFunc*/
+				)
+			}
+			if err != nil {
+				if shouldContinue {
+					continue
+				}
+				return err
+			}
 		}
 	}
 
