@@ -893,6 +893,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				c.logger.Printf("Response for unknown request with xid %d", res.Xid)
 			} else {
 				if res.Err != 0 {
+					c.logger.Printf("toError in recvLoop")
 					err = res.Err.toError()
 				} else {
 					_, err = decodePacket(buf[16:blen], req.recvStruct)
@@ -1321,6 +1322,7 @@ func (c *Conn) Multi(ops ...interface{}) ([]MultiResponse, error) {
 	}
 	mr := make([]MultiResponse, len(res.Ops))
 	for i, op := range res.Ops {
+		c.logger.Printf("toError in Multi")
 		mr[i] = MultiResponse{Stat: op.Stat, String: op.String, Error: op.Err.toError()}
 	}
 	return mr, err
