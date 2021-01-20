@@ -21,6 +21,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	gosasl "github.com/beltran/gosasl"
 )
 
 // ErrNoServer indicates that an operation cannot be completed
@@ -1365,15 +1367,15 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 
 		mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 		if err != nil {
-			log.Println(err)
+			c.logger.Println(err)
 		}
 		saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
 
 		// Get initial response
 		saslToken, err := saslClient.Start()
-		log.Println(saslToken)
+		c.logger.Println(saslToken)
 		if err != nil {
-			log.Println(err)
+			c.logger.Println(err)
 		}
 
 		sbuf := make([]byte, 4)
@@ -1395,7 +1397,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 			for !saslClient.Complete() {
 				saslToken, err = saslClient.Step(saslToken)
 				if err != nil {
-					log.Println(err)
+					c.logger.Println(err)
 				}
 				if saslToken != nil {
 					sbuf := make([]byte, 4)
@@ -1421,7 +1423,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		binary.BigEndian.PutUint32(buf[:], uint32(len(saslToken)))
 		buf = append(buf, saslToken...)
 		resp, err := saslClient.Encode(buf)
-		log.Println(resp)
+		c.logger.Println(resp)
 		return c.conn.Write(resp)
 }
 
