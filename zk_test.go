@@ -667,7 +667,7 @@ func TestSasl(t *testing.T) {
 	defer cancel()
 
 	servers := []string{fmt.Sprintf("127.0.0.1:%d", startPort)}
-	conn, eChan, err := Connect(servers, time.Second*2)
+	conn, eChan, err := Connect(servers, time.Second*2, "")
 
 	requireNoError(t, err)
 	waitForSession(waitCtx, eChan)
@@ -693,7 +693,7 @@ func TestSasl(t *testing.T) {
 	_, err = conn.Create("/sasl", data, 0, SaslACL(user, PermAll))
 	requireNoError(t, err)
 
-	conn2, _, err := Connect(servers, time.Second*2)
+	conn2, _, err := Connect(servers, time.Second*2, "")
 	defer conn2.Close()
 	_, err = conn2.Create("/sasl/test", data, 0, WorldACL(PermAll))
 
@@ -1028,7 +1028,7 @@ func TestRequestFail(t *testing.T) {
 	// If connecting fails to all servers in the list then pending requests
 	// should be errored out so they don't hang forever.
 
-	zk, _, err := Connect([]string{"127.0.0.1:32444"}, time.Second*15)
+	zk, _, err := Connect([]string{"127.0.0.1:32444"}, time.Second*15, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1050,7 +1050,7 @@ func TestRequestFail(t *testing.T) {
 }
 
 func TestIdempotentClose(t *testing.T) {
-	zk, _, err := Connect([]string{"127.0.0.1:32444"}, time.Second*15)
+	zk, _, err := Connect([]string{"127.0.0.1:32444"}, time.Second*15, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1083,7 +1083,7 @@ func TestSlowServer(t *testing.T) {
 	}
 	defer close(stopCh)
 
-	zk, _, err := Connect([]string{proxyAddr}, time.Millisecond*500)
+	zk, _, err := Connect([]string{proxyAddr}, time.Millisecond*500, "")
 	if err != nil {
 		t.Fatal(err)
 	}

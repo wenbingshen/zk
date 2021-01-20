@@ -168,7 +168,7 @@ type HostProvider interface {
 // using a custom Dialer. See Connect for further information about session timeout.
 // This method is deprecated and provided for compatibility: use the WithDialer option instead.
 func ConnectWithDialer(servers []string, sessionTimeout time.Duration, dialer Dialer) (*Conn, <-chan Event, error) {
-	return Connect(servers, sessionTimeout, WithDialer(dialer))
+	return Connect(servers, sessionTimeout, "", WithDialer(dialer))
 }
 
 // Connect establishes a new connection to a pool of zookeeper
