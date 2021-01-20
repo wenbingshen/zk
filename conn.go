@@ -1372,7 +1372,7 @@ func (c *Conn) Server() string {
 }
 
 func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
-	c.logger.Printf("1.begin kerberos...")
+	c.logger.Printf("0.begin kerberos...")
 	mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 	if err != nil {
 		c.logger.Printf("had an err=%v", err)
@@ -1381,18 +1381,26 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	saslClient := gosasl.NewSaslClient("hdp04.bigdata.zll.360es.cn", mechanism)
 
 	// Get initial response
-	saslToken, err := saslClient.Start() //AS_REQ
+	saslToken, err := saslClient.Start()
 	if err != nil {
 		c.logger.Printf("has a err:%v", err)
 	}
-	c.logger.Printf("2.new saslClient start successfully, init saslTopken= %s", string(saslToken))
-	sbuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
-	sbuf = append(sbuf, saslToken...)
-	c.conn.Write(sbuf)
-	c.logger.Printf("2.1write sbuf= %s", string(sbuf))
+	c.logger.Printf("1.new saslClient start successfully, init saslTopken= %s", string(saslToken))
+	//sbuf := make([]byte, 4)
+	//binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
+	//sbuf = append(sbuf, saslToken...)
+	//c.conn.Write(sbuf)
+	//c.logger.Printf("2.1write sbuf= %s", string(sbuf))
 
-	if !saslClient.Complete() {
+	c.logger.Printf("2.begin sendKerberosRequest")
+	_, err = sendKerberosRequest(string(saslToken), c)
+	if err != nil {
+		c.logger.Printf("sendKerberosRequest failed: err= %v", err)
+		return false, err
+	}
+	return true, nil
+
+	/*	if !saslClient.Complete() {
 		c.logger.Printf("3.first complete false")
 		status := make([]byte, 4)
 		c.conn.Read(status)
@@ -1431,9 +1439,9 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 				c.logger.Printf("6.1after third complete false, saslTopken= %s", string(saslToken))
 			}
 		}
-	}
+	}*/
 
-	return false, nil
+	//return false, nil
 }
 
 func sendKerberosRequest(token string, c *Conn) (bool, error) {
@@ -1560,5 +1568,10 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 		}
 	}
 
+	if err != nil {
+		c.logger.Printf("Auth failed %v", err)
+		return err
+	}
+	c.logger.Printf("%s auth successfully", c.auth)
 	return nil
 }
