@@ -1377,10 +1377,11 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	if err != nil {
 		c.logger.Printf("had an err=%v", err)
 	}
-	saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
+	//saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
+	saslClient := gosasl.NewSaslClient("hdp04.bigdata.zll.360es.cn", mechanism)
 
 	// Get initial response
-	saslToken, err := saslClient.Start()
+	saslToken, err := saslClient.Start() //AS_REQ
 	if err != nil {
 		c.logger.Printf("has a err:%v", err)
 	}
@@ -1406,14 +1407,14 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 
 		for !saslClient.Complete() {
 			c.logger.Printf("4.begin saslClient step")
-			saslToken, err = saslClient.Step(saslToken)
+			saslToken, err = saslClient.Step(saslToken) //TGS_REQ
 			if err != nil {
 				c.logger.Printf("faild an err= %v", err)
 			}
 			c.logger.Printf("4.1after begin saslClient, saslTopken= %s", string(saslToken))
 			if saslToken != nil {
 				c.logger.Printf("5.begin sendKerberosRequest")
-				_, err := sendKerberosRequest(string(saslToken), c)
+				_, err := sendKerberosRequest(string(saslToken), c) //AP_REQ
 				c.logger.Printf("5.1after begin sendKerberosRequest: err= %v", err)
 			}
 			if !saslClient.Complete() {
