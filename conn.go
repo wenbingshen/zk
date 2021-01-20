@@ -1393,7 +1393,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	//c.logger.Printf("2.1write sbuf= %s", string(sbuf))
 
 	c.logger.Printf("2.begin sendKerberosRequest")
-	_, err = sendKerberosRequest(string(saslToken), c)
+	_, err = sendKerberosRequest(saslToken, c)
 	if err != nil {
 		c.logger.Printf("sendKerberosRequest failed: err= %v", err)
 		return false, err
@@ -1444,12 +1444,12 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	//return false, nil
 }
 
-func sendKerberosRequest(token string, c *Conn) (bool, error) {
+func sendKerberosRequest(token []byte, c *Conn) (bool, error) {
 	resp := setSaslResponse{}
 	req := &request{
 		xid:        c.nextXid(),
 		opcode:     opSetSasl,
-		pkt:        setSaslRequest{token},
+		pkt:        getSaslRequest{token},
 		recvStruct: resp,
 		recvChan:   make(chan response, 1),
 		recvFunc:   nil,
