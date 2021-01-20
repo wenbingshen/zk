@@ -1367,15 +1367,15 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 
 		mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 		if err != nil {
-			c.logger.Println(err)
+			c.logger.Printf(err)
 		}
 		saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
 
 		// Get initial response
 		saslToken, err := saslClient.Start()
-		c.logger.Println(saslToken)
+		c.logger.Printf(saslToken)
 		if err != nil {
-			c.logger.Println(err)
+			c.logger.Printf(err)
 		}
 
 		sbuf := make([]byte, 4)
@@ -1397,7 +1397,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 			for !saslClient.Complete() {
 				saslToken, err = saslClient.Step(saslToken)
 				if err != nil {
-					c.logger.Println(err)
+					c.logger.Printf(err)
 				}
 				if saslToken != nil {
 					sbuf := make([]byte, 4)
@@ -1419,12 +1419,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 			}
 		}
 
-		buf = make([]byte, 4)
-		binary.BigEndian.PutUint32(buf[:], uint32(len(saslToken)))
-		buf = append(buf, saslToken...)
-		resp, err := saslClient.Encode(buf)
-		c.logger.Println(resp)
-		return c.conn.Write(resp)
+		return false, nil
 }
 
 // FIXME(linsite) unify it with doAddSasl.
