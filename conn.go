@@ -1372,7 +1372,6 @@ func (c *Conn) Server() string {
 }
 
 func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
-
 	mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 	if err != nil {
 		c.logger.Printf("had an err=%v", err)
@@ -1407,10 +1406,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 				c.logger.Printf("faild an err= %v", err)
 			}
 			if saslToken != nil {
-				sbuf := make([]byte, 4)
-				binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
-				sbuf = append(sbuf, saslToken...)
-				c.conn.Write(sbuf)
+				sendKerberosRequest(string(saslToken), c)
 			}
 			if !saslClient.Complete() {
 				status := make([]byte, 4)
@@ -1427,6 +1423,55 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func sendKerberosRequest(token string, c *Conn) (bool, error) {
+	resp := setSaslResponse{}
+	req := &request{
+		xid:        c.nextXid(),
+		opcode:     opSetSasl,
+		pkt:        setSaslRequest{token},
+		recvStruct: resp,
+		recvChan:   make(chan response, 1),
+		recvFunc:   nil,
+	}
+	header := &requestHeader{req.xid, req.opcode}
+	n, err := encodePacket(c.buf[4:], header)
+	if err != nil {
+		req.recvChan <- response{-1, err}
+		return false, nil
+	}
+
+	n2, err := encodePacket(c.buf[4+n:], req.pkt)
+	if err != nil {
+		req.recvChan <- response{-1, err}
+		return false, nil
+	}
+
+	n += n2
+
+	binary.BigEndian.PutUint32(c.buf[:4], uint32(n))
+
+	c.requestsLock.Lock()
+	select {
+	case <-c.closeChan:
+		req.recvChan <- response{-1, ErrConnectionClosed}
+		c.requestsLock.Unlock()
+		return false, ErrConnectionClosed
+	default:
+	}
+	c.requests[req.xid] = req
+	c.requestsLock.Unlock()
+
+	c.conn.SetWriteDeadline(time.Now().Add(c.recvTimeout))
+	_, err = c.conn.Write(c.buf[:n+4])
+	c.conn.SetWriteDeadline(time.Time{})
+	if err != nil {
+		req.recvChan <- response{-1, err}
+		c.conn.Close()
+		return false, err
+	}
+	return true, nil
 }
 
 // FIXME(linsite) unify it with doAddSasl.
