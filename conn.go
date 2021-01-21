@@ -977,36 +977,8 @@ func (c *Conn) request(opcode int32, req interface{}, res interface{}, recvFunc 
 	}
 }
 
-func (c *Conn) doAddSaslAuth(auth []byte) (int64, error) {
-	// step 1 Ask for server informations.
-	resp := setSaslResponse{}
-
-	zxid, err := c.request(opSetSasl, &setSaslRequest{}, &resp, nil)
-	if err != nil {
-		return zxid, err
-	}
-
-	challenge, err := resp.GenSaslChallenge(auth, "")
-
-	if err != nil {
-		return 0, err
-	}
-
-	// step 2 Do the authentication.
-	return c.request(opSetSasl, &setSaslRequest{challenge}, &resp, nil)
-}
-
-// AddAuth adds an auth specified by <scheme> and <auth>, supported schemes
-// includes "digest", "sasl", <auth> usually comes as "user:pasword".
 func (c *Conn) AddAuth(scheme string, auth []byte) error {
-	//_, err := c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
-
-	var err error
-	if scheme == "sasl" {
-		_, err = c.doAddSaslAuth(auth)
-	} else {
-		_, err = c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
-	}
+	_, err := c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
 
 	if err != nil {
 		return err
@@ -1533,43 +1505,47 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 		c.logger.Printf("re-submitting `%d` credentials after reconnect", len(c.creds))
 	}
 
-	var shouldContinue bool
+	//var shouldContinue bool
 	var err error
 
-	if c.auth == "kerberos" {
-		shouldContinue, err = resendZkKerberos(ctx, c)
-	} else {
-		for _, cred := range c.creds {
-			// return early before attempting to send request.
-			if shouldCancel() {
-				return nil
-			}
-			// do not use the public API for auth since it depends on the send/recv loops
-			// that are waiting for this to return
-			if cred.scheme == "digest" {
-				shouldContinue, err = resendZkDigest(ctx, c, cred.auth)
-			} else if cred.scheme == "kerberos" {
-				shouldContinue, err = resendZkKerberos(ctx, c)
-			} else {
-				shouldContinue, err = c.sendRequestEx(
-					ctx,
-					opSetAuth,
-					&setAuthRequest{Type: 0,
-						Scheme: cred.scheme,
-						Auth:   cred.auth,
-					},
-					&setAuthResponse{},
-					nil, /* recvFunc*/
-				)
-			}
-			if err != nil {
-				if shouldContinue {
-					continue
-				}
-				return err
-			}
-		}
+	if shouldCancel() {
+		return nil
 	}
+
+	if c.auth == "kerberos" {
+		_, err = resendZkKerberos(ctx, c)
+	} //else {
+	//for _, cred := range c.creds {
+	//	// return early before attempting to send request.
+	//	if shouldCancel() {
+	//		return nil
+	//	}
+	//	// do not use the public API for auth since it depends on the send/recv loops
+	//	// that are waiting for this to return
+	//	if cred.scheme == "digest" {
+	//		shouldContinue, err = resendZkDigest(ctx, c, cred.auth)
+	//	} else if cred.scheme == "kerberos" {
+	//		shouldContinue, err = resendZkKerberos(ctx, c)
+	//	} else {
+	//		shouldContinue, err = c.sendRequestEx(
+	//			ctx,
+	//			opSetAuth,
+	//			&setAuthRequest{Type: 0,
+	//				Scheme: cred.scheme,
+	//				Auth:   cred.auth,
+	//			},
+	//			&setAuthResponse{},
+	//			nil, /* recvFunc*/
+	//		)
+	//	}
+	//	if err != nil {
+	//		if shouldContinue {
+	//			continue
+	//		}
+	//		return err
+	//	}
+	//}
+	//}
 
 	if err != nil {
 		c.logger.Printf("Auth failed %v", err)
