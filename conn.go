@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	gosasl "github.com/beltran/gosasl"
+	gosasl "github.com/wenbingshen/gosasl"
 )
 
 // ErrNoServer indicates that an operation cannot be completed
