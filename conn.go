@@ -1395,7 +1395,8 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	//c.logger.Printf("2.1write sbuf= %s", string(sbuf))
 
 	c.logger.Printf("2.begin sendKerberosRequest")
-	_, err = sendKerberosRequest(saslToken, c)
+	resp := setSaslResponse{}
+	_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
 	if err != nil {
 		c.logger.Printf("sendKerberosRequest failed: err= %v", err)
 		return false, err
