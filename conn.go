@@ -1468,24 +1468,6 @@ func sendKerberosRequest(token []byte, c *Conn) (bool, error) {
 	return true, nil
 }
 
-// FIXME(linsite) unify it with doAddSasl.
-// resendZkDigest resends Digest SASL auth, when the 1st return value is true indicates the connection is invalid.
-func resendZkDigest(ctx context.Context, c *Conn, auth []byte) (bool, error) {
-	resp := setSaslResponse{}
-	shouldContinue, err := c.sendRequestEx(ctx, opSetSasl, &setSaslRequest{}, &resp, nil)
-	if err != nil {
-		return shouldContinue, err
-	}
-
-	challenge, err := resp.GenSaslChallenge(auth, "")
-
-	if err != nil {
-		return true, err
-	}
-
-	return c.sendRequestEx(ctx, opSetSasl, &setSaslRequest{challenge}, &resp, nil)
-}
-
 func resendZkAuth(ctx context.Context, c *Conn) error {
 	shouldCancel := func() bool {
 		select {
