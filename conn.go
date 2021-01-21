@@ -1373,50 +1373,45 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.logger.Printf("sendKerberosRequest failed: err= %v", err)
 		return false, err
 	}
-	return true, nil
 
-	/*	if !saslClient.Complete() {
+	if !saslClient.Complete() {
 		c.logger.Printf("3.first complete false")
-		status := make([]byte, 4)
-		c.conn.Read(status)
-
-		tokenLen := make([]byte, 4)
-		c.conn.Read(tokenLen)
-
-		resLength := binary.BigEndian.Uint32(tokenLen)
-		saslToken = make([]byte, resLength)
-		c.conn.Read(saslToken)
+		//status := make([]byte, 4)
+		//c.conn.Read(status)
+		//
+		//tokenLen := make([]byte, 4)
+		//c.conn.Read(tokenLen)
+		//
+		//resLength := binary.BigEndian.Uint32(tokenLen)
+		//saslToken = make([]byte, resLength)
+		//c.conn.Read(saslToken)
+		saslToken = []byte(resp.Token)
 		c.logger.Printf("3.1after first complete false, saslTopken= %s", string(saslToken))
 
 		for !saslClient.Complete() {
 			c.logger.Printf("4.begin saslClient step")
-			saslToken, err = saslClient.Step(saslToken) //TGS_REQ
+			saslToken, err = saslClient.Step(saslToken)
 			if err != nil {
 				c.logger.Printf("faild an err= %v", err)
 			}
 			c.logger.Printf("4.1after begin saslClient, saslTopken= %s", string(saslToken))
 			if saslToken != nil {
-				c.logger.Printf("5.begin sendKerberosRequest")
-				_, err := sendKerberosRequest(string(saslToken), c) //AP_REQ
-				c.logger.Printf("5.1after begin sendKerberosRequest: err= %v", err)
+				resp := setSaslResponse{}
+				_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
+				if err != nil {
+					c.logger.Printf("sendKerberosRequest failed: err= %v", err)
+					return false, err
+				}
 			}
 			if !saslClient.Complete() {
 				c.logger.Printf("6.third complete false")
-				status := make([]byte, 4)
-				c.conn.Read(status)
-
-				tokenLen := make([]byte, 4)
-				c.conn.Read(tokenLen)
-
-				resLength := binary.BigEndian.Uint32(tokenLen)
-				saslToken = make([]byte, resLength)
-				c.conn.Read(saslToken)
+				saslToken = []byte(resp.Token)
 				c.logger.Printf("6.1after third complete false, saslTopken= %s", string(saslToken))
 			}
 		}
-	}*/
+	}
 
-	//return false, nil
+	return false, nil
 }
 
 func sendKerberosRequest(token []byte, c *Conn) (bool, error) {
