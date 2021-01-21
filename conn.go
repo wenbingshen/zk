@@ -1346,7 +1346,6 @@ func (c *Conn) Server() string {
 }
 
 func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
-	c.logger.Printf("0.begin kerberos...")
 	mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 	if err != nil {
 		c.logger.Printf("had an err=%v", err)
@@ -1359,65 +1358,29 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	if err != nil {
 		c.logger.Printf("has a err:%v", err)
 	}
-	c.logger.Printf("1.new saslClient started")
-	//sbuf := make([]byte, 4)
-	//binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
-	//sbuf = append(sbuf, saslToken...)
-	//c.conn.Write(sbuf)
-	//c.logger.Printf("2.1write sbuf= %s", string(sbuf))
-
-	//c.logger.Printf("2.begin sendKerberosRequest")
 	resp := setSaslResponse{}
-	//_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
-	//if err != nil {
-	//	c.logger.Printf("sendKerberosRequest failed: err= %v", err)
-	//	return false, err
-	//}
+	_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{}, &resp, nil)
+	if err != nil {
+		return false, err
+	}
 
 	if !saslClient.Complete() {
-		c.logger.Printf("3.first complete false")
-		//status := make([]byte, 4)
-		//c.conn.Read(status)
-		//
-		//tokenLen := make([]byte, 4)
-		//c.conn.Read(tokenLen)
-		//
-		//resLength := binary.BigEndian.Uint32(tokenLen)
-		//saslToken = make([]byte, resLength)
-		//c.conn.Read(saslToken)
-		//saslToken = []byte(resp.Token)
-		c.logger.Printf("3.1after first complete false, saslTopken= %s , size= %d", string(saslToken), len(saslToken))
+		saslToken = []byte(resp.Token)
 
 		for !saslClient.Complete() {
-			c.logger.Printf("4.begin saslClient step")
 			saslToken, err = saslClient.Step(saslToken)
 			if err != nil {
 				c.logger.Printf("faild an err= %v", err)
 			}
-			c.logger.Printf("4.1after begin saslClient step, saslTopken= %s", string(saslToken))
 			if saslToken != nil {
 				resp := setSaslResponse{}
 				_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
 				if err != nil {
-					c.logger.Printf("sendKerberosRequest failed: err= %v", err)
 					return false, err
 				}
 			}
 			if !saslClient.Complete() {
-				c.logger.Printf("6.third complete false")
-				//status := make([]byte, 4)
-				//c.conn.Read(status)
-				//
-				//tokenLen := make([]byte, 4)
-				//c.conn.Read(tokenLen)
-				//
-				//resLength := binary.BigEndian.Uint32(tokenLen)
-				//saslToken = make([]byte, resLength)
-				//c.conn.Read(saslToken)
-				if resp.Token != "" {
-					saslToken = []byte(resp.Token)
-				}
-				c.logger.Printf("6.1after third complete false, saslTopken= %s", string(saslToken))
+				saslToken = []byte(resp.Token)
 			}
 		}
 	}
