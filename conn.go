@@ -1366,27 +1366,27 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	//c.conn.Write(sbuf)
 	//c.logger.Printf("2.1write sbuf= %s", string(sbuf))
 
-	c.logger.Printf("2.begin sendKerberosRequest")
-	resp := setSaslResponse{}
-	_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
-	if err != nil {
-		c.logger.Printf("sendKerberosRequest failed: err= %v", err)
-		return false, err
-	}
+	//c.logger.Printf("2.begin sendKerberosRequest")
+	//resp := setSaslResponse{}
+	//_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
+	//if err != nil {
+	//	c.logger.Printf("sendKerberosRequest failed: err= %v", err)
+	//	return false, err
+	//}
 
 	if !saslClient.Complete() {
 		c.logger.Printf("3.first complete false")
-		//status := make([]byte, 4)
-		//c.conn.Read(status)
-		//
-		//tokenLen := make([]byte, 4)
-		//c.conn.Read(tokenLen)
-		//
-		//resLength := binary.BigEndian.Uint32(tokenLen)
-		//saslToken = make([]byte, resLength)
-		//c.conn.Read(saslToken)
-		saslToken = []byte(resp.Token)
-		c.logger.Printf("3.1after first complete false, saslTopken= %s , size= %d", string(saslToken), len(saslToken))
+		status := make([]byte, 4)
+		c.conn.Read(status)
+
+		tokenLen := make([]byte, 4)
+		c.conn.Read(tokenLen)
+
+		resLength := binary.BigEndian.Uint32(tokenLen)
+		saslToken = make([]byte, resLength)
+		c.conn.Read(saslToken)
+		//saslToken = []byte(resp.Token)
+		//c.logger.Printf("3.1after first complete false, saslTopken= %s , size= %d", string(saslToken), len(saslToken))
 
 		for !saslClient.Complete() {
 			c.logger.Printf("4.begin saslClient step")
@@ -1405,7 +1405,15 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 			}
 			if !saslClient.Complete() {
 				c.logger.Printf("6.third complete false")
-				saslToken = []byte(resp.Token)
+				status := make([]byte, 4)
+				c.conn.Read(status)
+
+				tokenLen := make([]byte, 4)
+				c.conn.Read(tokenLen)
+
+				resLength := binary.BigEndian.Uint32(tokenLen)
+				saslToken = make([]byte, resLength)
+				c.conn.Read(saslToken)
 				c.logger.Printf("6.1after third complete false, saslTopken= %s", string(saslToken))
 			}
 		}
