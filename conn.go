@@ -1359,8 +1359,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.logger.Printf("has a err:%v", err)
 	}
 	resp := setSaslResponse{}
-	emptyToken := []byte{}
-	_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{emptyToken}, &resp, nil)
+	_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
 	if err != nil {
 		return false, err
 	}
