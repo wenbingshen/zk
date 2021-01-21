@@ -1386,7 +1386,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		//saslToken = make([]byte, resLength)
 		//c.conn.Read(saslToken)
 		saslToken = []byte(resp.Token)
-		c.logger.Printf("3.1after first complete false, saslTopken= %s", string(saslToken))
+		c.logger.Printf("3.1after first complete false, saslTopken= %s , size= %d", string(saslToken), len(saslToken))
 
 		for !saslClient.Complete() {
 			c.logger.Printf("4.begin saslClient step")
