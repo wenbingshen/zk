@@ -1360,11 +1360,11 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.logger.Printf("has a err:%v", err)
 	}
 	c.logger.Printf("1.new saslClient started")
-	//sbuf := make([]byte, 4)
-	//binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
-	//sbuf = append(sbuf, saslToken...)
-	//c.conn.Write(sbuf)
-	//c.logger.Printf("2.1write sbuf= %s", string(sbuf))
+	sbuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(sbuf[0:], uint32(len(saslToken)))
+	sbuf = append(sbuf, saslToken...)
+	c.conn.Write(sbuf)
+	c.logger.Printf("2.1write sbuf= %s", string(sbuf))
 
 	//c.logger.Printf("2.begin sendKerberosRequest")
 	//resp := setSaslResponse{}
@@ -1386,7 +1386,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		saslToken = make([]byte, resLength)
 		c.conn.Read(saslToken)
 		//saslToken = []byte(resp.Token)
-		//c.logger.Printf("3.1after first complete false, saslTopken= %s , size= %d", string(saslToken), len(saslToken))
+		c.logger.Printf("3.1after first complete false, saslTopken= %s , size= %d", string(saslToken), len(saslToken))
 
 		for !saslClient.Complete() {
 			c.logger.Printf("4.begin saslClient step")
