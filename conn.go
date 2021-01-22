@@ -1351,7 +1351,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.logger.Printf("had an err=%v", err)
 	}
 	//saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
-	saslClient := gosasl.NewSaslClient("hdp04.bigdata.zll.360es.cn", mechanism)
+	saslClient := gosasl.NewSaslClient("hdp05.bigdata.zll.360es.cn", mechanism)
 
 	// Get initial response
 	c.logger.Printf("1. before saslClient.Start")
