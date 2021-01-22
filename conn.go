@@ -167,8 +167,8 @@ type HostProvider interface {
 // ConnectWithDialer establishes a new connection to a pool of zookeeper servers
 // using a custom Dialer. See Connect for further information about session timeout.
 // This method is deprecated and provided for compatibility: use the WithDialer option instead.
-func ConnectWithDialer(servers []string, sessionTimeout time.Duration, dialer Dialer) (*Conn, <-chan Event, error) {
-	return Connect(servers, sessionTimeout, "", WithDialer(dialer))
+func ConnectWithDialer(servers []string, sessionTimeout time.Duration, dialer Dialer, auth string) (*Conn, <-chan Event, error) {
+	return Connect(servers, sessionTimeout, auth, WithDialer(dialer))
 }
 
 // Connect establishes a new connection to a pool of zookeeper
@@ -180,6 +180,10 @@ func ConnectWithDialer(servers []string, sessionTimeout time.Duration, dialer Di
 func Connect(servers []string, sessionTimeout time.Duration, auth string, options ...connOption) (*Conn, <-chan Event, error) {
 	if len(servers) == 0 {
 		return nil, nil, errors.New("zk: server list must not be empty")
+	}
+
+	if auth != "kerberos" || auth != "none" {
+		return nil, nil, errors.New("current go-zookeeper only supports kerberos or none for sasl authentication, you need put 'kerberos' or you can put 'none' if you don't want to use kerberos")
 	}
 
 	srvs := FormatServers(servers)
@@ -1360,7 +1364,7 @@ func resendZkKerberos(ctx context.Context, c *Conn, servers []string) (bool, err
 	// Get initial response
 	saslToken, err := saslClient.Start()
 	if err != nil {
-		c.logger.Printf("has a err:%v", err)
+		c.logger.Printf("had an err=%v", err)
 	}
 
 	resp := setSaslResponse{}
@@ -1411,7 +1415,7 @@ func resendZkAuth(ctx context.Context, c *Conn, servers []string) error {
 		c.logger.Printf("re-submitting `%d` credentials after reconnect", len(c.creds))
 	}
 
-	//var shouldContinue bool
+	var shouldContinue bool
 	var err error
 
 	if shouldCancel() {
@@ -1420,38 +1424,32 @@ func resendZkAuth(ctx context.Context, c *Conn, servers []string) error {
 
 	if c.auth == "kerberos" {
 		_, err = resendZkKerberos(ctx, c, servers)
-	} //else {
-	//for _, cred := range c.creds {
-	//	// return early before attempting to send request.
-	//	if shouldCancel() {
-	//		return nil
-	//	}
-	//	// do not use the public API for auth since it depends on the send/recv loops
-	//	// that are waiting for this to return
-	//	if cred.scheme == "digest" {
-	//		shouldContinue, err = resendZkDigest(ctx, c, cred.auth)
-	//	} else if cred.scheme == "kerberos" {
-	//		shouldContinue, err = resendZkKerberos(ctx, c)
-	//	} else {
-	//		shouldContinue, err = c.sendRequestEx(
-	//			ctx,
-	//			opSetAuth,
-	//			&setAuthRequest{Type: 0,
-	//				Scheme: cred.scheme,
-	//				Auth:   cred.auth,
-	//			},
-	//			&setAuthResponse{},
-	//			nil, /* recvFunc*/
-	//		)
-	//	}
-	//	if err != nil {
-	//		if shouldContinue {
-	//			continue
-	//		}
-	//		return err
-	//	}
-	//}
-	//}
+	} else {
+		for _, cred := range c.creds {
+			// return early before attempting to send request.
+			if shouldCancel() {
+				return nil
+			}
+			//	// do not use the public API for auth since it depends on the send/recv loops
+			//	// that are waiting for this to return
+			shouldContinue, err = c.sendRequestEx(
+				ctx,
+				opSetAuth,
+				&setAuthRequest{Type: 0,
+					Scheme: cred.scheme,
+					Auth:   cred.auth,
+				},
+				&setAuthResponse{},
+				nil, /* recvFunc*/
+			)
+			if err != nil {
+				if shouldContinue {
+					continue
+				}
+				return err
+			}
+		}
+	}
 
 	if err != nil {
 		c.logger.Printf("Auth failed %v", err)
