@@ -911,6 +911,12 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 					req.recvFunc(req, &res, err)
 					c.logger.Printf("after req.recvFunc")
 				}
+
+				if req.opcode == opSetSasl && err == ErrShortBuffer && res.Err == 0 {
+					emptyToken := []byte{}
+					req.recvStruct = setSaslResponse{string(emptyToken)}
+					err = nil
+				}
 				c.logger.Printf("before req.recvChan")
 				req.recvChan <- response{res.Zxid, err}
 				c.logger.Printf("after req.recvChan")
@@ -1404,7 +1410,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.logger.Printf("5 before second sendRequestEx")
 		resp2 := setSaslResponse{}
 		if saslToken != nil {
-			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp2, recvSetSaslResp)
+			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp2, nil)
 			if err != nil {
 				return false, err
 			}
