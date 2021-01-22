@@ -1357,6 +1357,14 @@ func (c *Conn) Server() string {
 	return c.server
 }
 
+func recvSetSaslResp(request *request, responseHeader *responseHeader, error error) {
+	if request.opcode == opSetSasl && error == ErrShortBuffer && responseHeader.Err == 0 {
+		emptyToken := []byte{}
+		request.recvStruct = setSaslResponse{string(emptyToken)}
+		error = nil
+	}
+}
+
 func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 	if err != nil {
@@ -1396,8 +1404,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.logger.Printf("5 before second sendRequestEx")
 		resp2 := setSaslResponse{}
 		if saslToken != nil {
-
-			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp2, nil)
+			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp2, recvSetSaslResp)
 			if err != nil {
 				return false, err
 			}
