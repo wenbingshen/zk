@@ -1382,19 +1382,20 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.logger.Printf("4.1 after saslClient.Step, saslToken=%d", len(saslToken))
 
 		c.logger.Printf("5 before second sendRequestEx")
+		resp2 := setSaslResponse{}
 		if saslToken != nil {
-			resp := setSaslResponse{}
-			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
+
+			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp2, nil)
 			if err != nil {
 				return false, err
 			}
 		}
-		c.logger.Printf("5.1 after second sendRequestEx, resp.Token.length=%d", len(resp.Token))
+		c.logger.Printf("5.1 after second sendRequestEx, resp.Token.length=%d", len(resp2.Token))
 		c.logger.Printf("6 before second saslClient.Complete")
 		if !saslClient.Complete() {
-			saslToken = []byte(resp.Token)
+			saslToken = []byte(resp2.Token)
 		}
-		c.logger.Printf("6.1 after second saslClient.Complete")
+		c.logger.Printf("6.1 after second saslClient.Complete,saslToken.length=%d", len(saslToken))
 	}
 
 	return false, nil
