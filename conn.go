@@ -1364,24 +1364,22 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		return false, err
 	}
 
-	if !saslClient.Complete() {
-		saslToken = []byte(resp.Token)
+	saslToken = []byte(resp.Token)
 
-		for !saslClient.Complete() {
-			saslToken, err = saslClient.Step(saslToken)
+	for !saslClient.Complete() {
+		saslToken, err = saslClient.Step(saslToken)
+		if err != nil {
+			c.logger.Printf("faild an err= %v", err)
+		}
+		if saslToken != nil {
+			resp := setSaslResponse{}
+			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
 			if err != nil {
-				c.logger.Printf("faild an err= %v", err)
+				return false, err
 			}
-			if saslToken != nil {
-				resp := setSaslResponse{}
-				_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
-				if err != nil {
-					return false, err
-				}
-			}
-			if !saslClient.Complete() {
-				saslToken = []byte(resp.Token)
-			}
+		}
+		if !saslClient.Complete() {
+			saslToken = []byte(resp.Token)
 		}
 	}
 
