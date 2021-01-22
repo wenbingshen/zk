@@ -1354,10 +1354,14 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	saslClient := gosasl.NewSaslClient("hdp04.bigdata.zll.360es.cn", mechanism)
 
 	// Get initial response
+	c.logger.Printf("1. before saslClient.Start")
 	saslToken, err := saslClient.Start()
 	if err != nil {
 		c.logger.Printf("has a err:%v", err)
 	}
+	c.logger.Printf("1.1. after saslClient.Start")
+
+	c.logger.Printf("2. before sendRequestEx")
 	resp := setSaslResponse{}
 	_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
 	if err != nil {
@@ -1365,12 +1369,19 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	}
 
 	saslToken = []byte(resp.Token)
+	c.logger.Printf("2.1 after sendRequestEx, resp.Token.length=%d", len(saslToken))
 
+	c.logger.Printf("3 before first saslClient.Complete")
 	for !saslClient.Complete() {
+		c.logger.Printf("3.1 after first saslClient.Complete")
+		c.logger.Printf("4 before saslClient.Step")
 		saslToken, err = saslClient.Step(saslToken)
 		if err != nil {
-			c.logger.Printf("faild an err= %v", err)
+			c.logger.Printf("failed an err= %v", err)
 		}
+		c.logger.Printf("4.1 after saslClient.Step, saslToken=%d", len(saslToken))
+
+		c.logger.Printf("5 before second sendRequestEx")
 		if saslToken != nil {
 			resp := setSaslResponse{}
 			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
@@ -1378,9 +1389,12 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 				return false, err
 			}
 		}
+		c.logger.Printf("5.1 after second sendRequestEx, resp.Token.length=%d", len(resp.Token))
+		c.logger.Printf("6 before second saslClient.Complete")
 		if !saslClient.Complete() {
 			saslToken = []byte(resp.Token)
 		}
+		c.logger.Printf("6.1 after second saslClient.Complete")
 	}
 
 	return false, nil
