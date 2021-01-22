@@ -896,12 +896,18 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 					c.logger.Printf("toError in recvLoop")
 					err = res.Err.toError()
 				} else {
+					c.logger.Printf("before decodePacket req.recvStruct")
 					_, err = decodePacket(buf[16:blen], req.recvStruct)
+					c.logger.Printf("after decodePacket req.recvStruct")
 				}
 				if req.recvFunc != nil {
+					c.logger.Printf("before req.recvFunc")
 					req.recvFunc(req, &res, err)
+					c.logger.Printf("after req.recvFunc")
 				}
+				c.logger.Printf("before req.recvChan")
 				req.recvChan <- response{res.Zxid, err}
+				c.logger.Printf("after req.recvChan")
 				if req.opcode == opClose {
 					return io.EOF
 				}
