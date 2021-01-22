@@ -182,7 +182,7 @@ func Connect(servers []string, sessionTimeout time.Duration, auth string, option
 		return nil, nil, errors.New("zk: server list must not be empty")
 	}
 
-	if auth != "kerberos" || auth != "none" {
+	if auth != "kerberos" && auth != "none" {
 		return nil, nil, errors.New("current go-zookeeper only supports kerberos or none for sasl authentication, you need put 'kerberos' or you can put 'none' if you don't want to use kerberos")
 	}
 
