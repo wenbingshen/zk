@@ -904,7 +904,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				} else {
 					c.logger.Printf("before decodePacket req.recvStruct")
 					_, err = decodePacket(buf[16:blen], req.recvStruct)
-					c.logger.Printf("after decodePacket req.recvStruct")
+					c.logger.Printf("after decodePacket req.recvStruct,err=%v", err)
 				}
 				if req.recvFunc != nil {
 					c.logger.Printf("before req.recvFunc")
