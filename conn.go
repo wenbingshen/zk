@@ -733,17 +733,23 @@ func (c *Conn) authenticate() error {
 
 func (c *Conn) sendData(req *request) error {
 	header := &requestHeader{req.xid, req.opcode}
+	c.logger.Printf("before sendData.encodePacket requestHeader")
 	n, err := encodePacket(c.buf[4:], header)
 	if err != nil {
 		req.recvChan <- response{-1, err}
+		c.logger.Printf("after sendData.encodePacket requestHeader, has an err=%v", err)
 		return nil
 	}
+	c.logger.Printf("after sendData.encodePacket requestHeader successfully")
 
+	c.logger.Printf("before sendData.encodePacket req.pkt")
 	n2, err := encodePacket(c.buf[4+n:], req.pkt)
 	if err != nil {
+		c.logger.Printf("after sendData.encodePacket req.pkt, has an err=%v", err)
 		req.recvChan <- response{-1, err}
 		return nil
 	}
+	c.logger.Printf("after sendData.encodePacket req.pkt successfully")
 
 	n += n2
 
