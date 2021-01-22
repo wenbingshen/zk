@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	gosasl "github.com/wenbingshen/gosasl"
+	gosasl "github.com/beltran/gosasl"
 )
 
 // ErrNoServer indicates that an operation cannot be completed
@@ -107,7 +107,7 @@ type Conn struct {
 
 	// Debug (for recurring re-auth hang)
 	debugCloseRecvLoop bool
-	resendZkAuthFn     func(context.Context, *Conn) error
+	resendZkAuthFn     func(context.Context, *Conn, []string) error
 
 	logger  Logger
 	logInfo bool // true if information messages are logged; false if only errors are logged
@@ -221,7 +221,7 @@ func Connect(servers []string, sessionTimeout time.Duration, auth string, option
 	ctx := context.Background()
 
 	go func() {
-		conn.loop(ctx)
+		conn.loop(ctx, servers)
 		conn.flushRequests(ErrClosing)
 		conn.invalidateWatches(ErrClosing)
 		close(conn.eventChan)
@@ -463,7 +463,7 @@ func (c *Conn) sendRequest(
 	return rq.recvChan, nil
 }
 
-func (c *Conn) loop(ctx context.Context) {
+func (c *Conn) loop(ctx context.Context, servers []string) {
 	for {
 		if err := c.connect(); err != nil {
 			// c.Close() was called
@@ -492,7 +492,7 @@ func (c *Conn) loop(ctx context.Context) {
 				defer c.conn.Close() // causes recv loop to EOF/exit
 				defer wg.Done()
 
-				if err := c.resendZkAuthFn(ctx, c); err != nil {
+				if err := c.resendZkAuthFn(ctx, c, servers); err != nil {
 					c.logger.Printf("error in resending auth creds: %v", err)
 					return
 				}
@@ -733,23 +733,17 @@ func (c *Conn) authenticate() error {
 
 func (c *Conn) sendData(req *request) error {
 	header := &requestHeader{req.xid, req.opcode}
-	c.logger.Printf("before sendData.encodePacket requestHeader")
 	n, err := encodePacket(c.buf[4:], header)
 	if err != nil {
 		req.recvChan <- response{-1, err}
-		c.logger.Printf("after sendData.encodePacket requestHeader, has an err=%v", err)
 		return nil
 	}
-	c.logger.Printf("after sendData.encodePacket requestHeader successfully")
 
-	c.logger.Printf("before sendData.encodePacket req.pkt")
 	n2, err := encodePacket(c.buf[4+n:], req.pkt)
 	if err != nil {
-		c.logger.Printf("after sendData.encodePacket req.pkt, has an err=%v", err)
 		req.recvChan <- response{-1, err}
 		return nil
 	}
-	c.logger.Printf("after sendData.encodePacket req.pkt successfully")
 
 	n += n2
 
@@ -899,17 +893,12 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 				c.logger.Printf("Response for unknown request with xid %d", res.Xid)
 			} else {
 				if res.Err != 0 {
-					c.logger.Printf("toError in recvLoop")
 					err = res.Err.toError()
 				} else {
-					c.logger.Printf("before decodePacket req.recvStruct")
 					_, err = decodePacket(buf[16:blen], req.recvStruct)
-					c.logger.Printf("after decodePacket req.recvStruct,err=%v", err)
 				}
 				if req.recvFunc != nil {
-					c.logger.Printf("before req.recvFunc")
 					req.recvFunc(req, &res, err)
-					c.logger.Printf("after req.recvFunc")
 				}
 
 				if req.opcode == opSetSasl && err == ErrShortBuffer && res.Err == 0 {
@@ -917,9 +906,7 @@ func (c *Conn) recvLoop(conn net.Conn) error {
 					req.recvStruct = setSaslResponse{string(emptyToken)}
 					err = nil
 				}
-				c.logger.Printf("before req.recvChan")
 				req.recvChan <- response{res.Zxid, err}
-				c.logger.Printf("after req.recvChan")
 				if req.opcode == opClose {
 					return io.EOF
 				}
@@ -1363,31 +1350,19 @@ func (c *Conn) Server() string {
 	return c.server
 }
 
-func recvSetSaslResp(request *request, responseHeader *responseHeader, error error) {
-	if request.opcode == opSetSasl && error == ErrShortBuffer && responseHeader.Err == 0 {
-		emptyToken := []byte{}
-		request.recvStruct = setSaslResponse{string(emptyToken)}
-		error = nil
-	}
-}
-
-func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
+func resendZkKerberos(ctx context.Context, c *Conn, servers []string) (bool, error) {
 	mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 	if err != nil {
 		c.logger.Printf("had an err=%v", err)
 	}
-	//saslClient := gosasl.NewSaslClient(strings.Split(c.server, ":")[0], mechanism)
-	saslClient := gosasl.NewSaslClient("hdp05.bigdata.zll.360es.cn", mechanism)
+	saslClient := gosasl.NewSaslClient(strings.Split(servers[0], ":")[0], mechanism)
 
 	// Get initial response
-	c.logger.Printf("1. before saslClient.Start")
 	saslToken, err := saslClient.Start()
 	if err != nil {
 		c.logger.Printf("has a err:%v", err)
 	}
-	c.logger.Printf("1.1. after saslClient.Start")
 
-	c.logger.Printf("2. before sendRequestEx")
 	resp := setSaslResponse{}
 	_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp, nil)
 	if err != nil {
@@ -1395,19 +1370,13 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	}
 
 	saslToken = []byte(resp.Token)
-	c.logger.Printf("2.1 after sendRequestEx, resp.Token.length=%d", len(saslToken))
 
-	c.logger.Printf("3 before first saslClient.Complete")
 	for !saslClient.Complete() {
-		c.logger.Printf("3.1 after first saslClient.Complete")
-		c.logger.Printf("4 before saslClient.Step")
 		saslToken, err = saslClient.Step(saslToken)
 		if err != nil {
 			c.logger.Printf("failed an err= %v", err)
 		}
-		c.logger.Printf("4.1 after saslClient.Step, saslToken=%d", len(saslToken))
 
-		c.logger.Printf("5 before second sendRequestEx")
 		resp2 := setSaslResponse{}
 		if saslToken != nil {
 			_, err = c.sendRequestEx(ctx, opSetSasl, &getSaslRequest{saslToken}, &resp2, nil)
@@ -1415,67 +1384,15 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 				return false, err
 			}
 		}
-		c.logger.Printf("5.1 after second sendRequestEx, resp.Token.length=%d", len(resp2.Token))
-		c.logger.Printf("6 before second saslClient.Complete")
 		if !saslClient.Complete() {
 			saslToken = []byte(resp2.Token)
 		}
-		c.logger.Printf("6.1 after second saslClient.Complete,saslToken.length=%d", len(saslToken))
 	}
 
 	return false, nil
 }
 
-func sendKerberosRequest(token []byte, c *Conn) (bool, error) {
-	resp := setSaslResponse{}
-	req := &request{
-		xid:        c.nextXid(),
-		opcode:     opSetSasl,
-		pkt:        getSaslRequest{token},
-		recvStruct: resp,
-		recvChan:   make(chan response, 1),
-		recvFunc:   nil,
-	}
-	header := &requestHeader{req.xid, req.opcode}
-	n, err := encodePacket(c.buf[4:], header)
-	if err != nil {
-		req.recvChan <- response{-1, err}
-		return false, nil
-	}
-
-	n2, err := encodePacket(c.buf[4+n:], req.pkt)
-	if err != nil {
-		req.recvChan <- response{-1, err}
-		return false, nil
-	}
-
-	n += n2
-
-	binary.BigEndian.PutUint32(c.buf[:4], uint32(n))
-
-	c.requestsLock.Lock()
-	select {
-	case <-c.closeChan:
-		req.recvChan <- response{-1, ErrConnectionClosed}
-		c.requestsLock.Unlock()
-		return false, ErrConnectionClosed
-	default:
-	}
-	c.requests[req.xid] = req
-	c.requestsLock.Unlock()
-
-	c.conn.SetWriteDeadline(time.Now().Add(c.recvTimeout))
-	_, err = c.conn.Write(c.buf[:n+4])
-	c.conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		req.recvChan <- response{-1, err}
-		c.conn.Close()
-		return false, err
-	}
-	return true, nil
-}
-
-func resendZkAuth(ctx context.Context, c *Conn) error {
+func resendZkAuth(ctx context.Context, c *Conn, servers []string) error {
 	shouldCancel := func() bool {
 		select {
 		case <-c.shouldQuit:
@@ -1502,7 +1419,7 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 	}
 
 	if c.auth == "kerberos" {
-		_, err = resendZkKerberos(ctx, c)
+		_, err = resendZkKerberos(ctx, c, servers)
 	} //else {
 	//for _, cred := range c.creds {
 	//	// return early before attempting to send request.
