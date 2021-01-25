@@ -1375,13 +1375,10 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 
 	var server = ""
 	if c.resovle == true {
-		server = strings.Split(c.hosts[c.server], ":")[0]
-		c.logger.Printf("c.resovle={}, server={}", c.resovle, server)
+		server = strings.Split(c.hosts[strings.Split(c.server, ":")[0]], ":")[0]
 	} else {
 		server = strings.Split(c.server, ":")[0]
-		c.logger.Printf("c.resovle={}, server={}", c.resovle, server)
 	}
-	c.logger.Printf("c.resovle={}, server={}", c.resovle, server)
 	saslClient := gosasl.NewSaslClient(server, mechanism)
 
 	// Get initial response
