@@ -16,6 +16,11 @@ type DNSHostProvider struct {
 	curr       int
 	last       int
 	lookupHost func(string) ([]string, error) // Override of net.LookupHost, for testing.
+	hostNames  map[string]string
+}
+
+func (hp *DNSHostProvider) HostNames() map[string]string {
+	return hp.hostNames
 }
 
 // Init is called first, with the servers specified in the connection
@@ -31,6 +36,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 	}
 
 	found := []string{}
+	hosts := make(map[string]string)
 	for _, server := range servers {
 		host, port, err := net.SplitHostPort(server)
 		if err != nil {
@@ -42,6 +48,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 		}
 		for _, addr := range addrs {
 			found = append(found, net.JoinHostPort(addr, port))
+			hosts[addr] = server
 		}
 	}
 
@@ -53,6 +60,7 @@ func (hp *DNSHostProvider) Init(servers []string) error {
 	stringShuffle(found)
 
 	hp.servers = found
+	hp.hostNames = hosts
 	hp.curr = -1
 	hp.last = -1
 

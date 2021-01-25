@@ -107,13 +107,15 @@ type Conn struct {
 
 	// Debug (for recurring re-auth hang)
 	debugCloseRecvLoop bool
-	resendZkAuthFn     func(context.Context, *Conn, []string) error
+	resendZkAuthFn     func(context.Context, *Conn) error
 
 	logger  Logger
 	logInfo bool // true if information messages are logged; false if only errors are logged
 
-	buf  []byte
-	auth string
+	buf     []byte
+	auth    string
+	hosts   map[string]string
+	resovle bool
 }
 
 // connOption represents a connection option.
@@ -162,6 +164,8 @@ type HostProvider interface {
 	Next() (server string, retryStart bool)
 	// Notify the HostProvider of a successful connection.
 	Connected()
+
+	HostNames() map[string]string
 }
 
 // ConnectWithDialer establishes a new connection to a pool of zookeeper servers
@@ -209,6 +213,7 @@ func Connect(servers []string, sessionTimeout time.Duration, auth string, option
 		buf:            make([]byte, bufferSize),
 		resendZkAuthFn: resendZkAuth,
 		auth:           auth,
+		resovle:        true,
 	}
 
 	// Set provided options.
@@ -220,12 +225,14 @@ func Connect(servers []string, sessionTimeout time.Duration, auth string, option
 		return nil, nil, err
 	}
 
+	conn.hosts = conn.hostProvider.HostNames()
+
 	conn.setTimeouts(int32(sessionTimeout / time.Millisecond))
 	// TODO: This context should be passed in by the caller to be the connection lifecycle context.
 	ctx := context.Background()
 
 	go func() {
-		conn.loop(ctx, servers)
+		conn.loop(ctx)
 		conn.flushRequests(ErrClosing)
 		conn.invalidateWatches(ErrClosing)
 		close(conn.eventChan)
@@ -317,6 +324,12 @@ func WithMaxConnBufferSize(maxBufferSize int) connOption {
 func WithCreds(creds authCreds) connOption {
 	return func(c *Conn) {
 		c.creds = append(c.creds, creds)
+	}
+}
+
+func WithResovle(resovle bool) connOption {
+	return func(c *Conn) {
+		c.resovle = resovle
 	}
 }
 
@@ -467,7 +480,7 @@ func (c *Conn) sendRequest(
 	return rq.recvChan, nil
 }
 
-func (c *Conn) loop(ctx context.Context, servers []string) {
+func (c *Conn) loop(ctx context.Context) {
 	for {
 		if err := c.connect(); err != nil {
 			// c.Close() was called
@@ -496,7 +509,7 @@ func (c *Conn) loop(ctx context.Context, servers []string) {
 				defer c.conn.Close() // causes recv loop to EOF/exit
 				defer wg.Done()
 
-				if err := c.resendZkAuthFn(ctx, c, servers); err != nil {
+				if err := c.resendZkAuthFn(ctx, c); err != nil {
 					c.logger.Printf("error in resending auth creds: %v", err)
 					return
 				}
@@ -1354,12 +1367,19 @@ func (c *Conn) Server() string {
 	return c.server
 }
 
-func resendZkKerberos(ctx context.Context, c *Conn, servers []string) (bool, error) {
+func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 	mechanism, err := gosasl.NewGSSAPIMechanism("zookeeper")
 	if err != nil {
 		c.logger.Printf("had an err=%v", err)
 	}
-	saslClient := gosasl.NewSaslClient(strings.Split(servers[0], ":")[0], mechanism)
+
+	server := ""
+	if c.resovle == true {
+		server = strings.Split(c.hosts[c.server], ":")[0]
+	} else {
+		server = strings.Split(c.server, ":")[0]
+	}
+	saslClient := gosasl.NewSaslClient(server, mechanism)
 
 	// Get initial response
 	saslToken, err := saslClient.Start()
@@ -1396,7 +1416,7 @@ func resendZkKerberos(ctx context.Context, c *Conn, servers []string) (bool, err
 	return false, nil
 }
 
-func resendZkAuth(ctx context.Context, c *Conn, servers []string) error {
+func resendZkAuth(ctx context.Context, c *Conn) error {
 	shouldCancel := func() bool {
 		select {
 		case <-c.shouldQuit:
@@ -1423,7 +1443,7 @@ func resendZkAuth(ctx context.Context, c *Conn, servers []string) error {
 	}
 
 	if c.auth == "kerberos" {
-		_, err = resendZkKerberos(ctx, c, servers)
+		_, err = resendZkKerberos(ctx, c)
 	} else {
 		for _, cred := range c.creds {
 			// return early before attempting to send request.

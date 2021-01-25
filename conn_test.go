@@ -30,10 +30,10 @@ func TestRecurringReAuthHang(t *testing.T) {
 
 	var reauthCloseOnce sync.Once
 	reauthSig := make(chan struct{}, 1)
-	conn.resendZkAuthFn = func(ctx context.Context, c *Conn, servers []string) error {
+	conn.resendZkAuthFn = func(ctx context.Context, c *Conn) error {
 		// in current implimentation the reauth might be called more than once based on various conditions
 		reauthCloseOnce.Do(func() { close(reauthSig) })
-		return resendZkAuth(ctx, c, []string{})
+		return resendZkAuth(ctx, c)
 	}
 
 	conn.debugCloseRecvLoop = true
