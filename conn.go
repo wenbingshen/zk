@@ -1373,7 +1373,7 @@ func resendZkKerberos(ctx context.Context, c *Conn) (bool, error) {
 		c.logger.Printf("had an err=%v", err)
 	}
 
-	server := ""
+	var server = ""
 	if c.resovle == true {
 		server = strings.Split(c.hosts[c.server], ":")[0]
 	} else {
