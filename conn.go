@@ -1444,6 +1444,9 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 
 	if c.auth == "kerberos" {
 		_, err = resendZkKerberos(ctx, c)
+		if err == nil {
+			c.logger.Printf("%s auth successfully", c.auth)
+		}
 	} else {
 		for _, cred := range c.creds {
 			// return early before attempting to send request.
@@ -1475,6 +1478,6 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 		c.logger.Printf("Auth failed %v", err)
 		return err
 	}
-	c.logger.Printf("%s auth successfully", c.auth)
+
 	return nil
 }
