@@ -1446,37 +1446,34 @@ func resendZkAuth(ctx context.Context, c *Conn) error {
 		_, err = resendZkKerberos(ctx, c)
 		if err == nil {
 			c.logger.Printf("%s auth successfully", c.auth)
-		}
-	} else {
-		for _, cred := range c.creds {
-			// return early before attempting to send request.
-			if shouldCancel() {
-				return nil
-			}
-			//	// do not use the public API for auth since it depends on the send/recv loops
-			//	// that are waiting for this to return
-			shouldContinue, err = c.sendRequestEx(
-				ctx,
-				opSetAuth,
-				&setAuthRequest{Type: 0,
-					Scheme: cred.scheme,
-					Auth:   cred.auth,
-				},
-				&setAuthResponse{},
-				nil, /* recvFunc*/
-			)
-			if err != nil {
-				if shouldContinue {
-					continue
-				}
-				return err
-			}
+		} else {
+			c.logger.Printf("Auth failed %v", err)
+			return err
 		}
 	}
-
-	if err != nil {
-		c.logger.Printf("Auth failed %v", err)
-		return err
+	for _, cred := range c.creds {
+		// return early before attempting to send request.
+		if shouldCancel() {
+			return nil
+		}
+		//	// do not use the public API for auth since it depends on the send/recv loops
+		//	// that are waiting for this to return
+		shouldContinue, err = c.sendRequestEx(
+			ctx,
+			opSetAuth,
+			&setAuthRequest{Type: 0,
+				Scheme: cred.scheme,
+				Auth:   cred.auth,
+			},
+			&setAuthResponse{},
+			nil, /* recvFunc*/
+		)
+		if err != nil {
+			if shouldContinue {
+				continue
+			}
+			return err
+		}
 	}
 
 	return nil
